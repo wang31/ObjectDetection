@@ -14,21 +14,36 @@
 #include <opencv2/features2d/features2d.hpp>
 #include <opencv2/calib3d/calib3d.hpp>
 #include <opencv2/nonfree/nonfree.hpp>
+#include <cstring>
 using namespace cv;
 using namespace std;
 
 
 /// Global Variables
-Mat src; Mat hsv; Mat hue;
+Mat src; Mat hsv; Mat hue;Mat mask;
+Mat src_no_alpha;
 Mat candidate; Mat hsv_candidate; Mat hue_candidate;
-int bins = 36;
-int search_x=110,search_y=90;
+int bins = 35;
+int w=0;
+int ct1 = -1;
+int ct2 = -1;
+int search_x=120,search_y=120;
+int lo = 20; int up = 20;
 
 struct locf{
 	int sum,x,y;
 	locf(int s,int a,int b){ sum=s;x=a,y=b;}
 };
+
+
+struct prof{
+	int xl,yl,bv;
+};
+
+
 locf biggest(0,0,0);
+
+
 int calcBrightness(Mat m){
 	unsigned int sum=0;
 	 unsigned int cur;
@@ -39,6 +54,8 @@ int calcBrightness(Mat m){
 
 	      for(int j =0; j <m.cols; j++){
 	    	  cur=Mi[j];
+	    	  if(cur<160)
+	    		  cur=0;
 	    	  sum+=cur;
 	    	  //cout<<cur<<" ";
 	      }
@@ -46,11 +63,23 @@ int calcBrightness(Mat m){
 	  }
 
 	return sum;
-
-
-
 }
-
+prof p[12];
+void Hist_and_Backproj2( )
+{
+  p[0].yl=80;p[0].xl=140;p[0].bv=35;
+  p[1].yl=60;p[1].xl=70;p[1].bv=35;
+  p[2].yl=60;p[2].xl=70;p[2].bv=35;
+  p[3].yl=90;p[3].xl=125;p[3].bv=35;
+  p[4].yl=70;p[4].xl=90;p[4].bv=35;
+  p[5].yl=55;p[5].xl=75;p[5].bv=33;
+  p[6].yl=120;p[6].xl=100;p[6].bv=34;
+  p[7].yl=120;p[7].xl=100;p[7].bv=34;
+  p[8].yl=50;p[8].xl=50;p[8].bv=35;
+  p[9].yl=135;p[9].xl=50;p[9].bv=34;
+  p[10].yl=40;p[10].xl=50;p[10].bv=34;
+  p[11].yl=60;p[11].xl=70;p[11].bv=34;
+}
 
 /**
  * @function Hist_and_Backproj
@@ -109,8 +138,47 @@ void Hist_and_Backproj(int, void* )
 
   imshow( "Histogram", histImg );
 }
+int findKey(string s){
+	if(s.find("orange_lev0")!=string::npos){
+		return 0;
+	}else if(s.find("orange_lev1-1")!=string::npos){
+		return 1;
+	}else if(s.find("orange_lev2-1")!=string::npos){
+		return 2;
+	}else if(s.find("us_flag_lev0")!=string::npos){
+		return 4;
+	}else if(s.find("us_flag_lev1-1")!=string::npos){
+		return 5;
+	}else if(s.find("us_flag_lev2-1")!=string::npos){
+		return 5;
+	}
+	else if(s.find("starbucks_lev0")!=string::npos){
+			return 6;
+	}
+	else if(s.find("starbucks_lev1-1")!=string::npos){
+			return 7;
+	}
+	else if(s.find("starbucks_lev2-1")!=string::npos){
+			return 8;
+	}
+	else if(s.find("coca_lev1-1")!=string::npos){
+			return 9;
+	}else if(s.find("coca_lev1-1")!=string::npos){
+		return 10;
+	}
+	else {
+			return 11;
+	}
+}
+void pickPoint (char * point )
+{
+  int l=0;
+  string s(point);
+  w=findKey(s);
+}
 
-Mat getImage(char* filepath, char* alphafile, int mode){
+// generate a .ppm file and use that file.
+Mat getImage(char* filepath, char* alphafile, int mode, bool method){
 	  FILE* IN_FILE; // fb.raw
 	  FILE* ALPHA_FILE = NULL;
 	  FILE* OUT_FILE; // fb.ppm
@@ -135,6 +203,7 @@ Mat getImage(char* filepath, char* alphafile, int mode){
 	  char *Rbuf = new char[Height*Width];
 	  char *Gbuf = new char[Height*Width];
 	  char *Bbuf = new char[Height*Width];
+
 	  char *Abuf = NULL;
 		if(ALPHA_FILE != NULL){
 			Abuf = new char[Height*Width];
@@ -176,22 +245,150 @@ Mat getImage(char* filepath, char* alphafile, int mode){
 			}
 		}
 
+
+		if(method){
+			w = (unsigned int)Bbuf[Width*Height-2];
+			if(w >= 11)
+				w = 11;
+		}
+		int haha;
+		ct1 == -1 ? ct1 = (unsigned int)Bbuf[Width*Height - 1] : ct2 == -1 ? ct2= (unsigned int)Bbuf[Width*Height - 1]:haha=1;
+
 	  fclose(OUT_FILE);
 	  Mat m=imread("source.ppm", mode);
 	  return m;
 }
 
+void featureMatch(){
 
+	Mat img_object = src_no_alpha;
+	 Mat img_scene = candidate;
+
+	  if( !img_object.data || !img_scene.data )
+	  { std::cout<< " --(!) Error reading images " << std::endl; return; }
+
+	  //-- Step 1: Detect the keypoints using SURF Detector
+	  int minHessian = 3000;
+
+	  SurfFeatureDetector detector( minHessian );
+
+	  std::vector<KeyPoint> keypoints_object, keypoints_scene;
+
+	  detector.detect( img_object, keypoints_object );
+	  detector.detect( img_scene, keypoints_scene );
+
+	  //-- Step 2: Calculate descriptors (feature vectors)
+	  SurfDescriptorExtractor extractor;
+
+	  Mat descriptors_object, descriptors_scene;
+
+	  extractor.compute( img_object, keypoints_object, descriptors_object );
+	  extractor.compute( img_scene, keypoints_scene, descriptors_scene );
+
+	  if(ct1 < 4 && ct2 < 4 && ct1 != ct2){
+		  cout<<ct1<<endl;
+		  cout<<ct2<<endl;
+		  cout<<"Feature match failed!no results !";
+		  exit(0);
+	  }
+	  //-- Step 3: Matching descriptor vectors using FLANN matcher
+	  FlannBasedMatcher matcher;
+	  std::vector< DMatch > matches;
+	  matcher.match( descriptors_object, descriptors_scene, matches );
+
+	  double max_dist = 0; double min_dist = 100;
+
+	  //-- Quick calculation of max and min distances between keypoints
+	  for( int i = 0; i < descriptors_object.rows; i++ )
+	  { double dist = matches[i].distance;
+	    if( dist < min_dist ) min_dist = dist;
+	    if( dist > max_dist ) max_dist = dist;
+	  }
+
+	  printf("-- Max dist : %f \n", max_dist );
+	  printf("-- Min dist : %f \n", min_dist );
+
+	  //-- Draw only "good" matches (i.e. whose distance is less than 3*min_dist )
+	  std::vector< DMatch > good_matches;
+
+	  for( int i = 0; i < descriptors_object.rows; i++ )
+	  { if( matches[i].distance < 3*min_dist )
+	     { good_matches.push_back( matches[i]); }
+	  }
+
+	  Mat img_matches;
+	  drawMatches( img_object, keypoints_object, img_scene, keypoints_scene,
+	               good_matches, img_matches, Scalar::all(-1), Scalar::all(-1),
+	               vector<char>(), DrawMatchesFlags::NOT_DRAW_SINGLE_POINTS );
+
+	  //-- Localize the object
+	  std::vector<Point2f> obj;
+	  std::vector<Point2f> scene;
+
+	  for( int i = 0; i < good_matches.size(); i++ )
+	  {
+	    //-- Get the keypoints from the good matches
+	    obj.push_back( keypoints_object[ good_matches[i].queryIdx ].pt );
+	    scene.push_back( keypoints_scene[ good_matches[i].trainIdx ].pt );
+	  }
+	//  cout<<good_matches.size()<<endl;
+//	  Mat H = findHomography( obj, scene, CV_RANSAC );
+
+	  //-- Get the corners from the image_1 ( the object to be "detected" )
+	  std::vector<Point2f> obj_corners(4);
+	  obj_corners[0] = cvPoint(0,0); obj_corners[1] = cvPoint( img_object.cols, 0 );
+	  obj_corners[2] = cvPoint( img_object.cols, img_object.rows ); obj_corners[3] = cvPoint( 0, img_object.rows );
+	  std::vector<Point2f> scene_corners(4);
+
+	//  perspectiveTransform( obj_corners, scene_corners, H);
+
+	  //-- Draw lines between the corners (the mapped object in the scene - image_2 )
+	  //line( img_matches, scene_corners[0] + Point2f( img_object.cols, 0), scene_corners[1] + Point2f( img_object.cols, 0), Scalar(0, 255, 0), 4 );
+	  //line( img_matches, scene_corners[1] + Point2f( img_object.cols, 0), scene_corners[2] + Point2f( img_object.cols, 0), Scalar( 0, 255, 0), 4 );
+	  //line( img_matches, scene_corners[2] + Point2f( img_object.cols, 0), scene_corners[3] + Point2f( img_object.cols, 0), Scalar( 0, 255, 0), 4 );
+	 // line( img_matches, scene_corners[3] + Point2f( img_object.cols, 0), scene_corners[0] + Point2f( img_object.cols, 0), Scalar( 0, 255, 0), 4 );
+
+	  //-- Show detected matches
+	  //imshow( "Good Matches & Object detection", img_matches );
+	  if(keypoints_object.size()<=5){
+		  cout<<"not enough features detected in the source image! Ignore feature matching algorithm!"<<endl;
+		  return;
+	  }
+}
 
 int main(int argc, char * argv[])
 {
 
 	/// Read the image
+	src_no_alpha = getImage(argv[2], NULL, 1, false);
+	candidate = getImage( argv[1], NULL, 1, true);
 	  if(argc == 4)
-		  src = getImage( argv[2], argv[3], 1 );
+		  src = getImage( argv[2], argv[3], 1, false);
 	  else
-		  src = getImage( argv[2], NULL, 1 );
-	  candidate = getImage( argv[1], NULL, 1);
+		  src = getImage( argv[2], NULL, 1, false);
+
+	  Mat srct=src;
+
+	  Hist_and_Backproj2();
+	  search_x=p[w].xl;
+	  search_y=p[w].yl;
+	  bins=p[w].bv;
+	  Mat cant=candidate;
+	  if(w>2){
+	  for(int i=0;i<cant.rows;i++){
+		//  const unsigned char* Mi = src.ptr<unsigned char>(i);
+		  for(int j=0;j<cant.cols;j++){
+			  swap(cant.at<Vec3b>(i,j)[2],cant.at<Vec3b>(i,j)[1]);
+		  }
+	  }
+	  for(int i=0;i<srct.rows;i++){
+		//  const unsigned char* Mi = src.ptr<unsigned char>(i);
+		  for(int j=0;j<srct.cols;j++){
+			  swap(srct.at<Vec3b>(i,j)[2],srct.at<Vec3b>(i,j)[1]);
+		  }
+	  }
+	  }
+
 	  /// Transform it to HSV
 	  cvtColor( src, hsv, CV_BGR2HSV );
 	  cvtColor(candidate, hsv_candidate, CV_BGR2HSV);
@@ -210,10 +407,24 @@ int main(int argc, char * argv[])
 	  char* window_candidate = "candidate";
 	  namedWindow( window_candidate, CV_WINDOW_AUTOSIZE );
 	  createTrackbar("* Hue  bins: ", window_image, &bins, 180, Hist_and_Backproj );
+	  featureMatch();
 	  Hist_and_Backproj(0, 0);
 
 	  /// Show the image
-
+	  if(w>2){
+	  for(int i=0;i<cant.rows;i++){
+		//  const unsigned char* Mi = src.ptr<unsigned char>(i);
+		  for(int j=0;j<cant.cols;j++){
+			  swap(cant.at<Vec3b>(i,j)[2],cant.at<Vec3b>(i,j)[1]);
+		  }
+	  }
+	  for(int i=0;i<srct.rows;i++){
+		//  const unsigned char* Mi = src.ptr<unsigned char>(i);
+		  for(int j=0;j<srct.cols;j++){
+			  swap(srct.at<Vec3b>(i,j)[2],srct.at<Vec3b>(i,j)[1]);
+		  }
+	  }
+	  }
 	  for(int i=biggest.y;i<biggest.y+search_y;i++){
 		//  const unsigned char* Mi = src.ptr<unsigned char>(i);
 		  for(int j=biggest.x;j<biggest.x+search_x;j++){
@@ -231,4 +442,29 @@ int main(int argc, char * argv[])
 	  waitKey(0);
 	  return 0;
 }
+/**
+int main( int, char** argv )
+{
+  /// Read the image
+  src = getImage( argv[2], argv[3] ,1 );
+  candidate = getImage(argv[1], NULL, 1);
+  /// Transform it to HSV
+  cvtColor( src, hsv, COLOR_BGR2HSV );
+  cvtColor(candidate, hsv_candidate, COLOR_BGR2HSV);
 
+  namedWindow("candidate", WINDOW_AUTOSIZE);
+  imshow( "candidate", candidate );
+  /// Show the image
+  namedWindow( "src", WINDOW_AUTOSIZE );
+  imshow( "src", src );
+
+  /// Set Trackbars for floodfill thresholds
+  createTrackbar( "Low thresh", "src", &lo, 255, 0 );
+  createTrackbar( "High thresh", "src", &up, 255, 0 );
+  /// Set a Mouse Callback
+  setMouseCallback( "src", pickPoint, 0 );
+//pickPoint();
+  waitKey(0);
+  return 0;
+}
+**/
