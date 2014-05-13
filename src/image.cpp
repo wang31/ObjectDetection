@@ -5,7 +5,6 @@
  *      Author: zhengwang
  */
 
-
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
@@ -15,6 +14,8 @@
 #include <opencv2/calib3d/calib3d.hpp>
 #include <opencv2/nonfree/nonfree.hpp>
 #include <cstring>
+#include <jpeglib.h>
+#include <libpng16/png.h>
 using namespace cv;
 using namespace std;
 
@@ -68,7 +69,7 @@ prof p[12];
 void Hist_and_Backproj2( )
 {
   p[0].yl=80;p[0].xl=140;p[0].bv=35;
-  p[1].yl=60;p[1].xl=70;p[1].bv=35;
+  p[1].yl=60;p[1].xl=90;p[1].bv=35;
   p[2].yl=60;p[2].xl=70;p[2].bv=35;
   p[3].yl=90;p[3].xl=125;p[3].bv=35;
   p[4].yl=70;p[4].xl=90;p[4].bv=35;
@@ -76,9 +77,9 @@ void Hist_and_Backproj2( )
   p[6].yl=120;p[6].xl=100;p[6].bv=34;
   p[7].yl=120;p[7].xl=100;p[7].bv=34;
   p[8].yl=50;p[8].xl=50;p[8].bv=35;
-  p[9].yl=135;p[9].xl=50;p[9].bv=34;
-  p[10].yl=40;p[10].xl=50;p[10].bv=34;
-  p[11].yl=60;p[11].xl=70;p[11].bv=34;
+  p[9].yl=135;p[9].xl=70;p[9].bv=34;
+  p[10].yl=50;p[10].xl=60;p[10].bv=34;
+  p[11].yl=120;p[11].xl=120;p[11].bv=34;
 }
 
 /**
@@ -101,6 +102,33 @@ void Hist_and_Backproj(int, void* )
   calcBackProject( &hue_candidate, 1, 0, hist, backproj, &ranges, 1, true );
   /// Draw the backproj
   cout<<bins<<endl;
+  unsigned int ui;
+  if(w % 8 == 0){
+	  for(int i = 0; i < 30; i++)
+	    {
+		  unsigned char* Mi = backproj.ptr<unsigned char>(i);
+	        for(int  j = 0; j < backproj.cols; j++){
+	        	ui=Mi[j];
+	        	if(ui>155){
+	        		Mi[j]=155;
+	        	}
+
+	        }
+	    }
+  }
+  /*if(w == 1){
+	  for(int i = 0; i < backproj.rows; i++)
+	    {
+		  unsigned char* Mi = backproj.ptr<unsigned char>(i);
+	        for(int  j = 0; j < backproj.cols; j++){
+	        	ui=Mi[j];
+	        	if(ui<160){
+	        		Mi[j]=0;
+	        	}
+
+	        }
+	    }
+  }*/
   imshow( "BackProj", backproj );
 
   double thold=0.15;
@@ -110,7 +138,7 @@ void Hist_and_Backproj(int, void* )
   int maxval=search_x*search_y*255;
   Mat B,C;
 
-  for(int i = 25; i < backproj.rows-search_y; i++)
+  for(int i = 0; i < backproj.rows-search_y; i++)
   {
       const unsigned char* Mi = backproj.ptr<unsigned char>(i);
       B = backproj( Range(i, i+search_y),Range::all());
@@ -285,7 +313,7 @@ void featureMatch(){
 	  extractor.compute( img_object, keypoints_object, descriptors_object );
 	  extractor.compute( img_scene, keypoints_scene, descriptors_scene );
 
-	  if(ct1 < 4 && ct2 < 4 && ct1 != ct2){
+	  if(ct1 < 4 && ct2 < 4 &&  ct1>=0 && ct2>=0 &&ct1 != ct2){
 		  cout<<ct1<<endl;
 		  cout<<ct2<<endl;
 		  cout<<"Feature match failed!no results !";
@@ -425,9 +453,9 @@ int main(int argc, char * argv[])
 		  }
 	  }
 	  }
-	  for(int i=biggest.y;i<biggest.y+search_y;i++){
+	  for(int i=biggest.y;i<biggest.y+10;i++){
 		//  const unsigned char* Mi = src.ptr<unsigned char>(i);
-		  for(int j=biggest.x;j<biggest.x+search_x;j++){
+		  for(int j=biggest.x;j<biggest.x+10;j++){
 			  candidate.at<Vec3b>(i,j)[0]=255;
 			  candidate.at<Vec3b>(i,j)[1]=0;
 			  candidate.at<Vec3b>(i,j)[2]=0;
